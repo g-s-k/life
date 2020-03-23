@@ -30,6 +30,7 @@ fn write_welcome_msg<W: Write>(screen: &mut W) {
 enum UserEvent {
     Exit,
     Generate,
+    PlayPause,
 }
 
 fn main() -> io::Result<()> {
@@ -52,6 +53,9 @@ fn main() -> io::Result<()> {
                 Key::Char('n') => {
                     tx.send(UserEvent::Generate).unwrap();
                 }
+                Key::Char(' ') => {
+                    tx.send(UserEvent::PlayPause).unwrap();
+                }
                 _ => (),
             }
         }
@@ -65,14 +69,19 @@ fn main() -> io::Result<()> {
     // longer timeout for welcome screen
     let mut frame_rate = Duration::from_secs(3);
 
+    let mut playing = true;
     loop {
-        let mut should_update = true;
+        let mut should_update = playing;
 
         match rx.recv_timeout(frame_rate) {
             Ok(UserEvent::Exit) => break,
             Ok(UserEvent::Generate) => {
                 board.generate();
                 should_update = false;
+            }
+            Ok(UserEvent::PlayPause) => {
+                playing = !playing;
+                should_update = playing;
             }
             _ => (),
         }
