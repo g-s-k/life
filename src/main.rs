@@ -1,7 +1,8 @@
 use std::{
     io::{self, stdin, stdout, Write},
-    thread::sleep,
-    time::{Duration, Instant},
+    sync::mpsc::channel,
+    thread::spawn,
+    time::Duration,
 };
 
 use termion::{cursor, event::Key, input::TermRead, raw::IntoRawMode, screen::*};
@@ -26,6 +27,11 @@ fn write_welcome_msg<W: Write>(screen: &mut W) {
     .unwrap();
 }
 
+enum UserEvent {
+    Exit,
+    Generate,
+}
+
 fn main() -> io::Result<()> {
     // set up terminal
     let mut screen = AlternateScreen::from(stdout().into_raw_mode()?);
@@ -36,31 +42,39 @@ fn main() -> io::Result<()> {
     screen.flush()?;
 
     // get stream of keystrokes from user
-    let mut events = stdin().keys().peekable();
+    let (tx, rx) = channel();
+    spawn(move || {
+        for evt in stdin().keys() {
+            match evt.unwrap() {
+                Key::Char('q') => {
+                    tx.send(UserEvent::Exit).unwrap();
+                }
+                Key::Char('n') => {
+                    tx.send(UserEvent::Generate).unwrap();
+                }
+                _ => (),
+            }
+        }
+    });
 
     // build game board
     let (x, y) = termion::terminal_size()?;
     let mut board = board::Board::with_dimensions(x as usize, y as usize);
     board.generate();
 
-    'main: loop {
-        let mut should_update = true;
-        let waiting_since = Instant::now();
+    // longer timeout for welcome screen
+    let mut frame_rate = Duration::from_secs(3);
 
-        'blocking: while waiting_since.elapsed() < Duration::from_millis(500) {
-            if events.peek().is_some() {
-                match events.next().unwrap()? {
-                    Key::Char('q') => break 'main,
-                    Key::Char('n') => {
-                        board.generate();
-                        should_update = false;
-                        break 'blocking;
-                    }
-                    _ => (),
-                }
-            } else {
-                sleep(Duration::from_millis(50));
+    loop {
+        let mut should_update = true;
+
+        match rx.recv_timeout(frame_rate) {
+            Ok(UserEvent::Exit) => break,
+            Ok(UserEvent::Generate) => {
+                board.generate();
+                should_update = false;
             }
+            _ => (),
         }
 
         write!(
@@ -75,6 +89,9 @@ fn main() -> io::Result<()> {
         if should_update {
             board.update();
         }
+
+        // shorter for subsequent frames
+        frame_rate = Duration::from_millis(250);
     }
 
     Ok(())

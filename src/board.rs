@@ -14,12 +14,20 @@ pub struct Board {
 
 impl Display for Board {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut last = false;
+
         for cell in &self.pixels {
-            if *cell {
-                write!(f, "#")?;
-            } else {
-                write!(f, " ")?;
+            match (last, *cell) {
+                (false, true) => write!(f, "{} ", termion::style::Invert)?,
+                (true, false) => write!(f, "{} ", termion::style::Reset)?,
+                _ => write!(f, " ")?,
             }
+
+            last = *cell;
+        }
+
+        if last {
+            write!(f, "{}", termion::style::Reset)?;
         }
 
         Ok(())
@@ -70,15 +78,9 @@ impl Board {
         let (left, top, right, bottom) =
             (x == 0, y == 0, x == self.width - 1, y == self.height - 1);
 
-        if !left && !top && self[(x - 1, y - 1)] {
-            alive += 1;
-        }
+        // sides
 
         if !top && self[(x, y - 1)] {
-            alive += 1;
-        }
-
-        if !right && !top && self[(x + 1, y - 1)] {
             alive += 1;
         }
 
@@ -86,15 +88,7 @@ impl Board {
             alive += 1;
         }
 
-        if !right && !bottom && self[(x + 1, y + 1)] {
-            alive += 1;
-        }
-
         if !bottom && self[(x, y + 1)] {
-            alive += 1;
-        }
-
-        if !left && !bottom && self[(x - 1, y + 1)] {
             alive += 1;
         }
 
@@ -102,17 +96,42 @@ impl Board {
             alive += 1;
         }
 
+        // corners
+
+        if !left && !top && self[(x - 1, y - 1)] {
+            alive += 1;
+        }
+
+        if !right && !top && self[(x + 1, y - 1)] {
+            alive += 1;
+        }
+
+        if !right && !bottom && self[(x + 1, y + 1)] {
+            alive += 1;
+        }
+
+        if !left && !bottom && self[(x - 1, y + 1)] {
+            alive += 1;
+        }
+
         alive
     }
 
     pub fn update(&mut self) {
+        let mut new_self = Self {
+            pixels: vec![false; self.height * self.width],
+            ..*self
+        };
+
         for x in 0..self.width {
             for y in 0..self.height {
-                self[(x, y)] = match (self[(x, y)], self.neighbors(x, y)) {
+                new_self[(x, y)] = match (self[(x, y)], self.neighbors(x, y)) {
                     (true, 2) | (_, 3) => true,
                     _ => false,
                 };
             }
         }
+
+        *self = new_self;
     }
 }
